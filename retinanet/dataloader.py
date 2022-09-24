@@ -34,13 +34,17 @@ class CocoDataset(Dataset):
         self.set_name = set_name
         self.transform = transform
 
-        self.coco      = COCO(os.path.join(self.root_dir, 'annotations', 'instances_' + self.set_name + '.json'))
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
+        self.coco = COCO(os.path.join(self.root_dir, 'annotations', 'instances_' + self.set_name + '.json'))
+
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
         self.image_ids = self.coco.getImgIds()
 
         self.load_classes()
 
     def load_classes(self):
         # load class names (name -> label)
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
         categories = self.coco.loadCats(self.coco.getCatIds())
         categories.sort(key=lambda x: x['id'])
 
@@ -66,22 +70,34 @@ class CocoDataset(Dataset):
         annot = self.load_annotations(idx)
         sample = {'img': img, 'annot': annot}
         if self.transform:
+            # sample里面的img形状是(608, 1056, 3)，其中608是Resizer的min_side，3是通道数量
             sample = self.transform(sample)
 
         return sample
 
     def load_image(self, image_index):
+
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
+        # self.image_ids中存放了11万+的图像标注信息id，用image_index来索引
+        # self.coco.loadImgs(self.image_ids[image_index])返回的是一个长度为1的list，所以要用[0]得到dict
         image_info = self.coco.loadImgs(self.image_ids[image_index])[0]
+
+        # 有了以上信息就能得到image的具体存放路径了
         path       = os.path.join(self.root_dir, 'images', self.set_name, image_info['file_name'])
+
+        # 使用scikit-image来读取得到RGB图像，参考文章：https://blog.csdn.net/TeFuirnever/article/details/89553708
         img = skimage.io.imread(path)
 
         if len(img.shape) == 2:
+            # 将灰度图像转换为RGB图像，得统一成3通道
             img = skimage.color.gray2rgb(img)
 
         return img.astype(np.float32)/255.0
 
     def load_annotations(self, image_index):
-        # get ground truth annotations
+
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
+        # get ground truth annotations，得到一个list里面记录着标注信息对应的ID，可以查看self.coco.anns变量
         annotations_ids = self.coco.getAnnIds(imgIds=self.image_ids[image_index], iscrowd=False)
         annotations     = np.zeros((0, 5))
 
@@ -90,7 +106,10 @@ class CocoDataset(Dataset):
             return annotations
 
         # parse annotations
+        # 根据annotations_ids读取对应的标注信息(dict)
+        # API解释参考文章：https://www.cnblogs.com/mizone/p/16102848.html
         coco_annotations = self.coco.loadAnns(annotations_ids)
+
         for idx, a in enumerate(coco_annotations):
 
             # some annotations have basically no width / height, skip them
@@ -166,7 +185,8 @@ class CSVDataset(Dataset):
         try:
             return function(value)
         except ValueError as e:
-            raise_from(ValueError(fmt.format(e)), None)
+            # raise_from(ValueError(fmt.format(e)), None)
+            raise(ValueError(fmt.format(e)), None)
 
     def _open_for_csv(self, path):
         """
@@ -257,7 +277,8 @@ class CSVDataset(Dataset):
             try:
                 img_file, x1, y1, x2, y2, class_name = row[:6]
             except ValueError:
-                raise_from(ValueError('line {}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''.format(line)), None)
+                raise(ValueError('line {}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''.format(line)), None)
+                # raise_from(ValueError('line {}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''.format(line)), None)
 
             if img_file not in result:
                 result[img_file] = []
@@ -337,7 +358,7 @@ def collater(data):
     return {'img': padded_imgs, 'annot': annot_padded, 'scale': scales}
 
 class Resizer(object):
-    """Convert ndarrays in sample to Tensors."""
+    """1.Resize. 2.Convert ndarrays in sample to Tensors."""
 
     def __call__(self, sample, min_side=608, max_side=1024):
         image, annots = sample['img'], sample['annot']
@@ -372,7 +393,7 @@ class Resizer(object):
 
 
 class Augmenter(object):
-    """Convert ndarrays in sample to Tensors."""
+    """50%的概率进行水平翻转"""
 
     def __call__(self, sample, flip_x=0.5):
 
